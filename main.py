@@ -3,6 +3,11 @@ from typing import Optional
 from fastapi import FastAPI
 
 from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, BackgroundTasks
+from pydantic import BaseModel, Field
+from typing import Dict, Any
+from datetime import datetime
+
 
 import random
 
@@ -146,6 +151,33 @@ def index():
     """
     return HTMLResponse(content=html_content, status_code=200)
 
+class PresentRequest(BaseModel):
+    name: str = Field(..., description="贈り物をくれた人の名前")
+    gift: str = Field(..., description="贈り物の名前")
+    meta: Dict[str, Any] = Field(default_factory=dict, description="追加情報")
+
+# 簡易キャッシュ（メモリ上）
+request_history = []
+
+# バックグラウンドタスク：履歴を追加
+def log_request(data: dict):
+    # 最大履歴数を100件に制限
+    if len(request_history) >= 100:
+        request_history.pop(0)
+    request_history.append({**data, "logged_at": datetime.utcnow().isoformat()})
+
 @app.post("/present")
-async def give_present(present):
-    return {"response": f"サーバです。メリークリスマス！ {present}ありがとう。お返しはキャンディーです。"}  # f文字列というPythonの機能を使っている
+async def give_present(
+    request: PresentRequest,
+    background_tasks: BackgroundTasks
+):
+    # リクエスト内容を辞書化
+    req_data = request.dict()
+    # バックグラウンドで履歴に保存
+    background_tasks.add_task(log_request, req_data)
+    # タイムスタンプ付きレスポンス生成
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    # お返しメッセージをランダム化
+    candy = ["チョコレート","キャンディー","クッキー"]
+    reply = f"メリークリスマス！ {request.name}さん、{request.gift}ありがとう。お返しは{candy[hash(request.name) % len(candy)]}です。 ({timestamp})"
+    return {"response": reply, "history_count": len(request_history)}
