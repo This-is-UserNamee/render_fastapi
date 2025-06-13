@@ -42,98 +42,103 @@ def index():
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>適当ランダムページ</title>
+  <title>時間で変化するアート</title>
   <style>
-    /* 全体のフォントとレイアウト */
-    body {
-      margin: 0;
-      padding: 0;
-      font-family: "Segoe UI", sans-serif;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      transition: background-color 0.5s ease;
+    body, html {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background-color: #000;
     }
-    h1 {
-      font-size: 3rem;
-      margin-bottom: 0.5rem;
-    }
-    p.quote {
-      font-size: 1.5rem;
-      font-style: italic;
-      text-align: center;
-      max-width: 80%;
-    }
-    button {
-      padding: 0.5rem 1rem;
-      font-size: 1rem;
-      cursor: pointer;
-      border: none;
-      border-radius: 0.25rem;
-      background-color: rgba(255,255,255,0.8);
-      transition: background-color 0.3s;
-    }
-    button:hover {
-      background-color: rgba(255,255,255,1);
+    canvas {
+      display: block;
     }
   </style>
 </head>
 <body>
-  <h1 id="title">適当な見出し</h1>
-  <p class="quote" id="quote">“何かしら適当に…”</p>
-  <button id="shuffle">もう一度ランダム</button>
-
+  <canvas id="art"></canvas>
   <script>
-    // ランダムに選ぶ背景色の候補
-    const colors = [
-      "#FFB3BA","#FFDFBA","#FFFFBA","#BAFFC9","#BAE1FF",
-      "#C8A2C8","#F4C2C2","#E0FFFF","#FFE4E1","#FFFACD"
-    ];
+    // ────────── 初期設定 ──────────
+    const canvas = document.getElementById('art');
+    const ctx = canvas.getContext('2d');
+    // 解像度調整（devicePixelRatioで高DPI対応）
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width  = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      ctx.scale(dpr, dpr);
+    }
+    window.addEventListener('resize', resize);
+    resize();
 
-    // ランダムに選ぶタイトルの候補
-    const titles = [
-      "今日はなんとなく…",
-      "適当万歳！",
-      "気まぐれページ",
-      "ランダム万歳",
-      "行き当たりばったり"
-    ];
-
-    // ランダムに選ぶ名言（正式出典ではありません、適当に）
-    const quotes = [
-      "“人生は適当に歩けばいい。”",
-      "“偶然こそ人生の醍醐味。”",
-      "“完璧なんて求めない。”",
-      "“適当にやれば楽になる。”",
-      "“ミスこそ次へのステップ。”"
-    ];
-
-    // 要素取得
-    const body    = document.body;
-    const titleEl = document.getElementById("title");
-    const quoteEl = document.getElementById("quote");
-    const btn     = document.getElementById("shuffle");
-
-    // ランダム更新関数
-    function shuffleAll() {
-      // 背景色ランダム設定
-      const color = colors[Math.floor(Math.random() * colors.length)];
-      body.style.backgroundColor = color;
-
-      // タイトルランダム設定
-      titleEl.textContent = titles[Math.floor(Math.random() * titles.length)];
-
-      // 名言ランダム設定
-      quoteEl.textContent = quotes[Math.floor(Math.random() * quotes.length)];
+    // ────────── ユーティリティ関数 ──────────
+    /** 0〜1 の値を受け取って、指定範囲の線形補間を返す。\
+     *  Tip: 線形補間（lerp）は、二点間を t (0–1) で補間する手法。 */
+    function lerp(a, b, t) {
+      return a + (b - a) * t;
     }
 
-    // 初回実行
-    shuffleAll();
+    /** HSV→RGB 変換。\
+     *  Tip: HSV (色相・彩度・明度) 表色系は、色相(hue)を角度で管理。 */
+    function hsvToRgb(h, s, v) {
+      let c = v * s;
+      let x = c * (1 - Math.abs((h / 60) % 2 - 1));
+      let m = v - c;
+      let rgb;
+      if (h < 60)      rgb = [c, x, 0];
+      else if (h < 120) rgb = [x, c, 0];
+      else if (h < 180) rgb = [0, c, x];
+      else if (h < 240) rgb = [0, x, c];
+      else if (h < 300) rgb = [x, 0, c];
+      else              rgb = [c, 0, x];
+      return rgb.map(v => Math.round((v + m) * 255));
+    }
 
-    // ボタン押下で再ランダム
-    btn.addEventListener("click", shuffleAll);
+    // ────────── アニメーション変数 ──────────
+    let startTime = null;
+
+    // ────────── 描画ループ ──────────
+    function draw(now) {
+      if (!startTime) startTime = now;
+      const t = (now - startTime) / 1000; // 経過秒数
+
+      const W = window.innerWidth;
+      const H = window.innerHeight;
+      const cell = 50;         // 一つの四角形のサイズ
+      const cols = Math.ceil(W / cell);
+      const rows = Math.ceil(H / cell);
+
+      // 背景クリア
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+
+      // グリッド描画
+      for (let i = 0; i < cols; i++) {
+        for (let j = 0; j < rows; j++) {
+          const x = i * cell;
+          const y = j * cell;
+          // 各セルごとに位相をずらす
+          const phase = Math.sin((i + j) * 0.5 + t * 1.2);
+          // 色相を時間で変化させる
+          const hue = (t * 30 + phase * 60 + i * 5) % 360;
+          const sat = lerp(0.4, 1.0, (phase + 1) / 2);
+          const val = lerp(0.3, 1.0, (Math.cos(phase + t) + 1) / 2);
+          const [r, g, b] = hsvToRgb(hue, sat, val);
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+
+          // 円の大きさも時間で変化
+          const radius = cell * 0.4 * ((phase + 1) / 2);
+          ctx.beginPath();
+          ctx.arc(x + cell/2, y + cell/2, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // 次フレーム
+      requestAnimationFrame(draw);
+    }
+
+    requestAnimationFrame(draw);
   </script>
 </body>
 </html>
